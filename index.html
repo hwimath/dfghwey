@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>곱셈 나눗셈(잘못연산, 네모 채우기, 수카드)</title>
+  <!-- MathJax 로드 (LaTeX 수식 렌더링) -->
+  <script
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
+    defer
+  ></script>
+  <style>
+    body {
+      background-color: #ffffff;
+      color: #000000;
+      font-family: sans-serif;
+      margin: 20px;
+    }
+    .energy-bar-container {
+      width: 300px;
+      height: 20px;
+      border: 1px solid #000;
+      margin: 10px 0;
+    }
+    .energy-bar {
+      width: 100%;
+      height: 100%;
+      background-color: #000;
+      transition: width 0.2s linear;
+    }
+    .hidden {
+      display: none;
+    }
+    .question-container {
+      margin-bottom: 20px;
+      border-bottom: 1px solid #000;
+      padding-bottom: 20px;
+    }
+    .multiple-choice-options label {
+      margin-right: 10px;
+    }
+    .timer-info, .chance-info, .score-info {
+      margin: 5px 0;
+    }
+    #response {
+      white-space: pre-wrap;
+      font-size: 0.9em;
+      background: #f0f0f0;
+      padding: 5px;
+      margin-top: 10px;
+      border: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+
+<h1>곱셈 나눗셈(잘못연산, 네모 채우기, 수카드)</h1>
+
+<!-- 이름 입력 -->
+<div>
+  <label>이름: <input type="text" id="playerName" /></label>
+</div>
+
+<!-- 난이도 선택 -->
+<div>
+  <label>난이도 선택: 
+    <select id="difficultySelect">
+      <option value="highest">최상 (20초 / 문제당 20점)</option>
+      <option value="high">상 (30초 / 문제당 15점)</option>
+      <option value="mid">중 (40초 / 문제당 13점)</option>
+      <option value="low">하 (시간 제한 없음 / 문제당 10점)</option>
+    </select>
+  </label>
+</div>
+
+<button onclick="startGame()">게임 시작</button>
+
+<div class="timer-info" id="timerInfo" style="display:none;">
+  <div>남은 시간(에너지바):</div>
+  <div class="energy-bar-container">
+    <div class="energy-bar" id="energyBar"></div>
+  </div>
+  <div>전체 경과 시간: <span id="elapsedTime">0</span>초</div>
+</div>
+
+<div class="chance-info" id="chanceInfo" style="display:none;">
+  남은 기회: <span id="chances">3</span>
+</div>
+
+<div class="score-info" id="scoreInfo" style="display:none;">
+  현재 점수: <span id="score">0</span>
+</div>
+
+<!-- 문제 표시 영역 -->
+<div id="questionArea" style="display:none;">
+  <div class="question-container">
+    <div id="questionText"></div>
+    <div id="answerArea"></div>
+  </div>
+  <button onclick="checkAnswer()">정답 제출</button>
+</div>
+
+<!-- 점수 전송 -->
+<div id="endGameArea" class="hidden">
+  <button onclick="sendScore()">점수 전송</button>
+  <div id="response"></div>
+</div>
+
+<script>
+// =============== 문제 데이터 (4개 유형, 총 44문제) ===============
+//
+// 1) 유형1(주관식): "유선이와 정규가..." 같은 배수/배수연산 문제
+// 2) 유형2(주관식): "곱해야 할 것을 나누었다" 유형
+// 3) 유형3(객관식): "A×□ > B×C" 형태 (0~9 중 참인 값 모두 고르기)
+// 4) 유형4(주관식, 2개 답): "카드 중 3장을 뽑아 곱했을 때의 최댓값, 최솟값"
+
+//////////////////////
+// 1번 유형 문제들
+//////////////////////
+const type1Problems = [
+  {
+    type: 1,
+    statement: "유선이와 정규가 줄넘기를 하였습니다. 유선이는 56번 하였고, 정규는 유선이의 2배만큼 하였습니다. 정규는 몇 번 하였습니까?",
+    answer: "112"
+  },
+  {
+    type: 1,
+    statement: "아영이와 민수가 팔굽혀펴기를 했습니다. 아영이는 30번을 했고, 민수는 아영이의 2배를 했습니다. 민수는 몇 번 했을까요?",
+    answer: "60"
+  },
+  {
+    type: 1,
+    statement: "수진이와 지호가 달리기 연습을 했습니다. 수진이는 48바퀴를 달렸고, 지호는 수진이의 3배를 달렸습니다. 지호는 몇 바퀴를 달렸을까요?",
+    answer: "144"
+  },
+  {
+    type: 1,
+    statement: "혜원이와 도영이가 윗몸 일으키기를 했습니다. 혜원이는 25회를 했고, 도영이는 혜원이의 4배를 했습니다. 도영이는 몇 회를 했을까요?",
+    answer: "100"
+  },
+  {
+    type: 1,
+    statement: "지민이와 승우가 줄넘기를 했습니다. 지민이는 39번을 했고, 승우는 지민이의 2배를 했습니다. 승우는 몇 번 했을까요?",
+    answer: "78"
+  },
+  {
+    type: 1,
+    statement: "현서와 민규가 제기차기를 했습니다. 현서는 10개를 찼고, 민규는 현서의 5배를 찼습니다. 민규는 몇 개를 찼을까요?",
+    answer: "50"
+  },
+  {
+    type: 1,
+    statement: "선아와 윤호가 훌라후프 돌리기를 했습니다. 선아는 42번 돌렸고, 윤호는 선아의 2배를 돌렸습니다. 윤호는 몇 번 돌렸을까요?",
+    answer: "84"
+  },
+  {
+    type: 1,
+    statement: "다은이와 재민이가 줄넘기를 했습니다. 다은이는 67번을 했고, 재민이는 다은이의 3배를 했습니다. 재민이는 몇 번 했을까요?",
+    answer: "201"
+  },
+  {
+    type: 1,
+    statement: "주희와 석준이가 달리기를 했습니다. 주희는 50바퀴를 달렸고, 석준이는 주희의 4배를 달렸습니다. 석준이는 몇 바퀴를 달렸을까요?",
+    answer: "200"
+  },
+  {
+    type: 1,
+    statement: "서영이와 동혁이가 팔굽혀펴기를 했습니다. 서영이는 15회를 했고, 동혁이는 서영이의 3배를 했습니다. 동혁이는 몇 회를 했을까요?",
+    answer: "45"
+  },
+  {
+    type: 1,
+    statement: "수아와 형준이가 배드민턴 셔틀콕을 받았습니다. 수아는 28번 받았고, 형준이는 수아의 2배를 받았습니다. 형준이는 몇 번 받았을까요?",
+    answer: "56"
+  }
+];
+
+//////////////////////
+// 2번 유형 문제들
+//////////////////////
+const type2Problems = [
+  {
+    type: 2,
+    statement: "어떤 수에 4를 곱해야 할 것을 잘못하여 4로 나누었더니 9가 되었습니다. 바르게 계산하면 얼마입니까?",
+    answer: "144"
+  },
+  {
+    type: 2,
+    statement: "어떤 수에 5를 곱해야 할 것을 잘못하여 5로 나누었더니 6이 되었습니다. 바르게 계산하면 얼마입니까?",
+    answer: "150"
+  },
+  {
+    type: 2,
+    statement: "어떤 수에 3을 곱해야 할 것을 잘못하여 3으로 나누었더니 10이 되었습니다. 바르게 계산하면 얼마입니까?",
+    answer: "90"
+  },
+  {
+    type: 2,
+    statement: "어떤 수에 6을 곱해야 할 것을 잘못하여 6으로 나누었더니 7이 되었습니다. 바르게 계산하면 얼마입니까?",
+    answer: "252"
+  },
+  {
+    type: 2,
+    statement: "어떤 수에 8을 곱해야 할 것을 잘못하여 8로 나누었더니 2가 되었습니다. 바르게 계산하면 얼마입니까?",
+    answer: "128"
+  },
+  {
+    type: 2,
+    statement: "어떤 수에 9를 곱해야 할 것을 잘못하여 9로 나누었더니 4가 되었습니다. 바르게 계산하면 얼마입니까?",
+    answer: "324"
+  },
+  {
+    type: 2,
+    statement: "어떤 수에 7을 곱해야 할 것을 잘못하여 7로 나누었더니 8이 되었습니다. 바르게 계산하면 얼마입니까?",
+    answer: "392"
+  },
+  {
+    type: 2,
+    statement: "어떤 수에 12를 곱해야 할 것을 잘못하여 12로 나누었더니 5가 되었습니다. 바르게 계산하면 얼마입니까?",
+    answer: "720"
+  },
+  {
+    type: 2,
+    statement: "어떤 수에 4를 곱해야 할 것을 잘못하여 4로 나누었더니 11이 되었습니다. 바르게 계산하면 얼마입니까?",
+    answer: "176"
+  },
+  {
+    type: 2,
+    statement: "어떤 수에 10을 곱해야 할 것을 잘못하여 10으로 나누었더니 9가 되었습니다. 바르게 계산하면 얼마입니까?",
+    answer: "900"
+  },
+  {
+    type: 2,
+    statement: "어떤 수에 2를 곱해야 할 것을 잘못하여 2로 나누었더니 15가 되었습니다. 바르게 계산하면 얼마입니까?",
+    answer: "60"
+  }
+];
+
+//////////////////////
+// 3번 유형 문제들
+//////////////////////
+const type3Problems = [
+  {
+    type: 3,
+    statement: "\\(14 \\times \\Box > 30 \\times 3\\) 에서 \\(0\\)부터 \\(9\\)까지 중 참이 되게 하는 \\(\\Box\\)를 모두 고르세요.",
+    correctChoices: [7, 8, 9]
+  },
+  {
+    type: 3,
+    statement: "\\(12 \\times \\Box > 6 \\times 5\\) 에서 참이 되는 \\(\\Box\\)를 모두 고르세요.",
+    correctChoices: [3,4,5,6,7,8,9]
+  },
+  {
+    type: 3,
+    statement: "\\(7 \\times \\Box > 4 \\times 8\\) 에서 참이 되는 \\(\\Box\\)를 모두 고르세요.",
+    correctChoices: [5,6,7,8,9]
+  },
+  {
+    type: 3,
+    statement: "\\(15 \\times \\Box > 10 \\times 2\\) 에서 참이 되는 \\(\\Box\\)를 모두 고르세요.",
+    correctChoices: [2,3,4,5,6,7,8,9]
+  },
+  {
+    type: 3,
+    statement: "\\(9 \\times \\Box > 3 \\times 6\\) 에서 참이 되는 \\(\\Box\\)를 모두 고르세요.",
+    correctChoices: [3,4,5,6,7,8,9]
+  },
+  {
+    type: 3,
+    statement: "\\(20 \\times \\Box > 40 \\times 2\\) 에서 참이 되는 \\(\\Box\\)를 모두 고르세요.",
+    correctChoices: [5,6,7,8,9]
+  },
+  {
+    type: 3,
+    statement: "\\(5 \\times \\Box > 9 \\times 3\\) 에서 참이 되는 \\(\\Box\\)를 모두 고르세요.",
+    correctChoices: [6,7,8,9]
+  },
+  {
+    type: 3,
+    statement: "\\(11 \\times \\Box > 33 \\times 2\\) 에서 참이 되는 \\(\\Box\\)를 모두 고르세요.",
+    correctChoices: [7,8,9]
+  },
+  {
+    type: 3,
+    statement: "\\(8 \\times \\Box > 4 \\times 9\\) 에서 참이 되는 \\(\\Box\\)를 모두 고르세요.",
+    correctChoices: [5,6,7,8,9]
+  },
+  {
+    type: 3,
+    statement: "\\(16 \\times \\Box > 10 \\times 5\\) 에서 참이 되는 \\(\\Box\\)를 모두 고르세요.",
+    correctChoices: [4,5,6,7,8,9]
+  },
+  {
+    type: 3,
+    statement: "\\(13 \\times \\Box > 39 \\times 2\\) 에서 참이 되는 \\(\\Box\\)를 모두 고르세요.",
+    correctChoices: [7,8,9]
+  }
+];
+
+//////////////////////
+// 4번 유형 문제들 (수정)
+//  → "4장의 카드 중 3장을 골라 곱했을 때 최댓값과 최솟값"
+//////////////////////
+const type4Problems = [
+  // 원본(3, 9, 2, 5) => max=9*5*3=135, min=2*3*5=30
+  {
+    type: 4,
+    statement:
+      "카드 \\(3, 9, 2, 5\\) 중에서 3장을 뽑아 곱했을 때 <br>"
+      + "1) 곱이 가장 큰 결과, 2) 곱이 가장 작은 결과를 구하시오.",
+    answers: ["135", "30"]
+  },
+  // 유사문제 1
+  // (1,7,8,9) => max=7*8*9=504, min=1*7*8=56
+  {
+    type: 4,
+    statement:
+      "카드 \\(1, 7, 8, 9\\) 중에서 3장을 뽑아 곱했을 때 <br>"
+      + "1) 최댓값, 2) 최솟값을 구하시오.",
+    answers: ["504","56"]
+  },
+  // 유사문제 2
+  // (2,2,5,9) => max=2*5*9=90, min=2*2*5=20
+  {
+    type: 4,
+    statement:
+      "카드 \\(2, 2, 5, 9\\) 중에서 3장을 뽑아 곱했을 때 <br>"
+      + "1) 최댓값, 2) 최솟값을 구하시오.",
+    answers: ["90","20"]
+  },
+  // 유사문제 3
+  // (3,6,6,7) => max=6*6*7=252, min=3*6*6=108
+  {
+    type: 4,
+    statement:
+      "카드 \\(3, 6, 6, 7\\) 중에서 3장을 뽑아 곱했을 때 <br>"
+      + "1) 최댓값, 2) 최솟값을 구하시오.",
+    answers: ["252","108"]
+  },
+  // 유사문제 4
+  // (4,5,8,9) => max=5*8*9=360, min=4*5*8=160
+  {
+    type: 4,
+    statement:
+      "카드 \\(4, 5, 8, 9\\) 중에서 3장을 뽑아 곱했을 때 <br>"
+      + "1) 최댓값, 2) 최솟값을 구하시오.",
+    answers: ["360","160"]
+  },
+  // 유사문제 5
+  // (1,3,5,9) => max=3*5*9=135, min=1*3*5=15
+  {
+    type: 4,
+    statement:
+      "카드 \\(1, 3, 5, 9\\) 중에서 3장을 뽑아 곱했을 때 <br>"
+      + "1) 최댓값, 2) 최솟값을 구하시오.",
+    answers: ["135","15"]
+  },
+  // 유사문제 6
+  // (0,7,8,9) => max=7*8*9=504, min=0*어떤거=0
+  {
+    type: 4,
+    statement:
+      "카드 \\(0, 7, 8, 9\\) 중에서 3장을 뽑아 곱했을 때 <br>"
+      + "1) 최댓값, 2) 최솟값을 구하시오.",
+    answers: ["504","0"]
+  },
+  // 유사문제 7
+  // (2,3,4,9) => max=3*4*9=108, min=2*3*4=24
+  {
+    type: 4,
+    statement:
+      "카드 \\(2, 3, 4, 9\\) 중에서 3장을 뽑아 곱했을 때 <br>"
+      + "1) 최댓값, 2) 최솟값을 구하시오.",
+    answers: ["108","24"]
+  },
+  // 유사문제 8
+  // (3,7,8,9) => max=7*8*9=504, min=3*7*8=168
+  {
+    type: 4,
+    statement:
+      "카드 \\(3, 7, 8, 9\\) 중에서 3장을 뽑아 곱했을 때 <br>"
+      + "1) 최댓값, 2) 최솟값을 구하시오.",
+    answers: ["504","168"]
+  },
+  // 유사문제 9
+  // (1,2,8,5) => max=2*8*5=80, min=1*2*5=10
+  {
+    type: 4,
+    statement:
+      "카드 \\(1, 2, 8, 5\\) 중에서 3장을 뽑아 곱했을 때 <br>"
+      + "1) 최댓값, 2) 최솟값을 구하시오.",
+    answers: ["80","10"]
+  },
+  // 유사문제 10
+  // (4,6,8,8) => max=6*8*8=384, min=4*6*8=192
+  {
+    type: 4,
+    statement:
+      "카드 \\(4, 6, 8, 8\\) 중에서 3장을 뽑아 곱했을 때 <br>"
+      + "1) 최댓값, 2) 최솟값을 구하시오.",
+    answers: ["384","192"]
+  }
+];
+
+// 모든 문제 합치기 (총 44문제)
+let allProblems = [
+  ...type1Problems,
+  ...type2Problems,
+  ...type3Problems,
+  ...type4Problems
+];
+
+// =============== 문제 셔플 ===============
+function shuffleArray(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+}
+
+// =============== 전역 변수들 ===============
+let currentProblemIndex = 0;    // 현재 문제 번호(0 ~ 43까지)
+let score = 0;                  // 현재 점수
+let chances = 3;                // 남은 기회
+let timerInterval = null;       // 문제별 타이머용
+let energyTimeLimit = 999999;   // 난이도별 시간(초)
+let timeRemaining = 999999;     // 현재 남은 시간
+let totalElapsed = 0;           // 게임 전체 경과시간 (초)
+let totalTimer = null;          // 전체 시간 측정용
+let gameStarted = false;        // 게임 시작 여부
+
+// 난이도별 설정
+function applyDifficulty(diff) {
+  switch(diff) {
+    case 'highest':
+      energyTimeLimit = 20;  // 20초
+      break;
+    case 'high':
+      energyTimeLimit = 30;  // 30초
+      break;
+    case 'mid':
+      energyTimeLimit = 40;  // 40초
+      break;
+    case 'low':
+      // 시간 제한 없음 처리(매우 큰 값으로 설정)
+      energyTimeLimit = 999999;
+      break;
+  }
+}
+
+// 난이도별 점수
+function getScorePerQuestion(diff) {
+  switch(diff) {
+    case 'highest':
+      return 20;
+    case 'high':
+      return 15;
+    case 'mid':
+      return 13;
+    default:
+      return 10; // 'low'
+  }
+}
+
+// =============== 게임 시작 ===============
+function startGame() {
+  if (gameStarted) return;
+  gameStarted = true;
+
+  const difficulty = document.getElementById("difficultySelect").value;
+  applyDifficulty(difficulty);
+
+  // 점수/기회 초기화
+  score = 0;
+  chances = 3;
+  document.getElementById("score").innerText = score;
+  document.getElementById("chances").innerText = chances;
+  document.getElementById("scoreInfo").style.display = "block";
+  document.getElementById("chanceInfo").style.display = "block";
+
+  // 문제 배열 셔플
+  shuffleArray(allProblems);
+  currentProblemIndex = 0;
+
+  // 전체 경과시간 측정
+  totalElapsed = 0;
+  if (totalTimer) clearInterval(totalTimer);
+  totalTimer = setInterval(() => {
+    totalElapsed++;
+    document.getElementById('elapsedTime').innerText = totalElapsed;
+  }, 1000);
+
+  // 첫 문제 표시
+  document.getElementById("questionArea").style.display = "block";
+  document.getElementById("timerInfo").style.display = "block";
+
+  showProblem();
+}
+
+// 문제 보여주기
+function showProblem() {
+  if (chances <= 0) {
+    // 게임 종료
+    endGame();
+    return;
+  }
+
+  // 문제를 모두 풀었으면 => 이후엔 무작위 문제 무한 반복
+  if (currentProblemIndex >= allProblems.length) {
+    // 무작위 계속
+    currentProblemIndex = Math.floor(Math.random() * allProblems.length);
+  }
+
+  const problem = allProblems[currentProblemIndex];
+  const qText = document.getElementById("questionText");
+  const ansArea = document.getElementById("answerArea");
+
+  // 문제 텍스트 출력
+  qText.innerHTML = problem.statement;
+
+  // 정답 입력 영역 초기화
+  ansArea.innerHTML = "";
+
+  if (problem.type === 1 || problem.type === 2) {
+    // 주관식(단일)
+    ansArea.innerHTML = `
+      <input type="text" id="userAnswer" placeholder="정답을 입력하세요" />
+    `;
+  }
+  else if (problem.type === 3) {
+    // 객관식(여러 정답)
+    let checkboxes = "";
+    for (let i=0; i<10; i++){
+      checkboxes += `
+        <label>
+          <input type="checkbox" name="choiceGroup" value="${i}" />
+          ${i}
+        </label>
+      `;
+    }
+    ansArea.innerHTML = `
+      <div class="multiple-choice-options">
+        ${checkboxes}
+      </div>
+    `;
+  }
+  else if (problem.type === 4) {
+    // 주관식(정답이 2개, [maxProduct, minProduct])
+    ansArea.innerHTML = `
+      <div>곱의 최댓값: <input type="text" id="userAnswer1" placeholder="예: 504" /></div>
+      <div>곱의 최솟값: <input type="text" id="userAnswer2" placeholder="예: 56" /></div>
+    `;
+  }
+
+  // 수식 렌더링
+  MathJax.typeset();
+
+  // 문제별 시간 설정
+  timeRemaining = energyTimeLimit;
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    if (energyTimeLimit < 999999) {
+      timeRemaining--;
+      if (timeRemaining <= 0) {
+        // 시간 종료 -> 기회 1 감소 & 다음 문제
+        clearInterval(timerInterval);
+        chances--;
+        document.getElementById("chances").innerText = chances;
+        alert("시간이 초과되었습니다. 기회가 1 감소합니다.");
+        if (chances <= 0) {
+          endGame();
+          return;
+        }
+        nextProblem();
+      }
+      updateEnergyBar();
+    } else {
+      // 하 난이도(시간제한 없음)
+      document.getElementById("energyBar").style.width = "100%";
+    }
+  }, 1000);
+  updateEnergyBar();
+}
+
+// 에너지바 업데이트
+function updateEnergyBar() {
+  if (energyTimeLimit >= 999999) {
+    // 시간 무제한
+    document.getElementById("energyBar").style.width = "100%";
+    return;
+  }
+  const ratio = timeRemaining / energyTimeLimit;
+  const percentage = Math.max(0, Math.min(1, ratio)) * 100;
+  document.getElementById("energyBar").style.width = percentage + "%";
+}
+
+// 정답 확인
+function checkAnswer() {
+  if (chances <= 0) return;
+  const problem = allProblems[currentProblemIndex];
+  const difficulty = document.getElementById("difficultySelect").value;
+  const perScore = getScorePerQuestion(difficulty);
+
+  let isCorrect = false;
+
+  if (problem.type === 1 || problem.type === 2) {
+    // 단일 정답
+    const userInput = (document.getElementById("userAnswer").value || "").trim();
+    if (userInput === problem.answer) {
+      isCorrect = true;
+    }
+  }
+  else if (problem.type === 3) {
+    // 객관식(여러 정답)
+    const checkboxes = document.getElementsByName("choiceGroup");
+    let chosen = [];
+    for (let cb of checkboxes) {
+      if (cb.checked) {
+        chosen.push(parseInt(cb.value,10));
+      }
+    }
+    // 정답 배열과 같은지 비교(순서는 무관, 집합비교)
+    let correctSet = new Set(problem.correctChoices);
+    let chosenSet = new Set(chosen);
+
+    // 조건: 선택된 집합 == 정답 집합
+    if (correctSet.size === chosenSet.size) {
+      let allIn = true;
+      for (let val of correctSet) {
+        if (!chosenSet.has(val)) {
+          allIn = false;
+          break;
+        }
+      }
+      isCorrect = allIn;
+    }
+  }
+  else if (problem.type === 4) {
+    // 2개 정답 => [최댓값, 최솟값]
+    const userA1 = (document.getElementById("userAnswer1").value || "").trim();
+    const userA2 = (document.getElementById("userAnswer2").value || "").trim();
+    if (userA1 === problem.answers[0] && userA2 === problem.answers[1]) {
+      isCorrect = true;
+    }
+  }
+
+  if (isCorrect) {
+    alert("정답입니다!");
+    score += perScore;
+    document.getElementById("score").innerText = score;
+  } else {
+    alert("틀렸습니다! 정답: " + revealAnswer(problem));
+    chances--;
+    document.getElementById("chances").innerText = chances;
+    if (chances <= 0) {
+      endGame();
+      return;
+    }
+  }
+
+  nextProblem();
+}
+
+// 정답 보여주기(틀렸을 때)
+function revealAnswer(problem) {
+  if (problem.type === 1 || problem.type === 2) {
+    return problem.answer;
+  } else if (problem.type === 3) {
+    return "{" + problem.correctChoices.join(", ") + "}";
+  } else {
+    // type 4 => answers: [max, min]
+    return problem.answers.join(" / ");
+  }
+}
+
+// 다음 문제
+function nextProblem() {
+  clearInterval(timerInterval);
+  currentProblemIndex++;
+  showProblem();
+}
+
+// 게임 종료
+function endGame() {
+  clearInterval(timerInterval);
+  clearInterval(totalTimer);
+  alert("게임이 종료되었습니다! 점수: " + score);
+  document.getElementById("questionArea").style.display = "none";
+  document.getElementById("timerInfo").style.display = "none";
+  document.getElementById("endGameArea").classList.remove("hidden");
+}
+
+// 점수 전송
+async function sendScore() {
+  const name = document.getElementById("playerName").value || "";
+  const difficulty = document.getElementById("difficultySelect").value;
+  const finalScore = score;
+  const elapsedTime = totalElapsed;
+
+  saveData("곱셈나눗셈퀴즈", name, finalScore, elapsedTime);
+}
+
+// 서버 전송 로직 (주어진 예시 코드)
+function saveData(game, name, score, elapsedTime) {
+  const FUNCTION_URL = "https://us-central1-record-f420d.cloudfunctions.net/report";
+
+  const requestData = {
+      game,
+      name,
+      score: parseInt(score, 10),
+      elapsedTime: parseInt(elapsedTime, 10)
+  };
+
+  try {
+      // fetch는 비동기이므로, 실제 성공/실패는 then/catch에서 확인
+      fetch(FUNCTION_URL, {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestData)
+      })
+      .then(async (response) => {
+        const responseData = await response.json();
+        if (response.ok) {
+          document.getElementById('response').innerText = 
+            "성공: " + JSON.stringify(responseData, null, 2);
+        } else {
+          document.getElementById('response').innerText = 
+            "오류: " + JSON.stringify(responseData, null, 2);
+        }
+      })
+      .catch(error => {
+        console.error('요청 실패:', error);
+        document.getElementById('response').innerText = 
+          "네트워크 오류: " + error.message;
+      });
+  } catch (error) {
+      console.error('요청 실패:', error);
+      document.getElementById('response').innerText = 
+        "네트워크 오류: " + error.message;
+  }
+}
+</script>
+
+</body>
+</html>
